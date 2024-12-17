@@ -13,6 +13,8 @@ import { OrderPaginationDto } from 'src/common/dto/pagination.dto';
 import { NATS_SERVICE } from 'src/config/services';
 import { Product } from 'src/orders/entities/product.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { IOrderWithProducts } from './dto/order-with-products.interface';
+import { PaidOrderDto } from './dto/paid-order-dto';
 
 @Injectable()
 export class OrdersService extends PrismaClient implements OnModuleInit {
@@ -25,7 +27,7 @@ export class OrdersService extends PrismaClient implements OnModuleInit {
     await this.$connect();
     this.logger.log('Connected to the database');
   }
-  async create(createOrderDto: CreateOrderDto) {
+  async create(createOrderDto: CreateOrderDto): Promise<IOrderWithProducts> {
     try {
       const ids = createOrderDto.items.map((item) => item.productId);
       const products: Product[] = await firstValueFrom(
@@ -189,7 +191,50 @@ export class OrdersService extends PrismaClient implements OnModuleInit {
       throw new RpcException({
         message: `UPDATE_STATUS_ERROR_ID: ${id}`,
         status: HttpStatus.BAD_REQUEST,
+        //
       });
     }
+  }
+  async createPaymentSession(order: IOrderWithProducts) {
+    try {
+      const paymentSession = await firstValueFrom(
+        this.client.send(
+          { cmd: 'create.payment.session' },
+          {
+            orderId: order.id,
+            currency: 'usd',
+
+            items: order.OrderItem.map((item) => ({
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+          },
+        ),
+      );
+      return paymentSession;
+    } catch (error) {
+      this.logger.error(`ERROR_FROM_PAYMENT_SESSION: ${error}`);
+      throw new RpcException({
+        message: `ERROR_PAYMENT_SESSION`,
+        status: HttpStatus.BAD_REQUEST,
+      });
+    }
+  }
+  async paidOrder(paidOrderDto: PaidOrderDto) {
+    await this.order.update({
+      where: { id: paidOrderDto.orderId },
+      data: {
+        status: OrderStatus.PAID,
+        paid: true,
+        stripeChargeId: paidOrderDto.stripePaymentId,
+        paidAt: new Date(),
+        OrderReceipt: {
+          create: {
+            receiptUrl: paidOrderDto.receiptUrl,
+          },
+        },
+      },
+    });
   }
 }
