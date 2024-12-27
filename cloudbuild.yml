@@ -2,19 +2,17 @@ options:
   logging: CLOUD_LOGGING_ONLY
 steps:
   - name: "gcr.io/cloud-builders/docker"
+    entrypoint: "bash"
     args:
-      [
-        "build",
-        "-t",
-        "southamerica-east1-docker.pkg.dev/microservices-course-445914/image-registry/orders-ms-prod",
-        "-f",
-        "Dockerfile.prod",
-        "--platform=linux/amd64",
-        ".",
-      ]
+      - -c
+      - |
+        docker build -t southamerica-east1-docker.pkg.dev/microservices-course-445914/image-registry/orders-ms-prod -f dockerfile.prod --platform=linux/amd64 --build-arg ORDERS_DATABASE_URL=$$DATABASE_URL .
+    secretEnv: ["DATABASE_URL"]
+
   - name: "gcr.io/cloud-builders/docker"
-    args:
-      [
-        "push",
-        "southamerica-east1-docker.pkg.dev/microservices-course-445914/image-registry/orders-ms-prod",
-      ]
+    args: ["push", "southamerica-east1-docker.pkg.dev/microservices-course-445914/image-registry/orders-ms-prod"]
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/119372511767/secrets/ORDERS_DATABASE_URL/versions/1
+      env: "DATABASE_URL"
